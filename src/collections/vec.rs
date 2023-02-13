@@ -1,10 +1,10 @@
-use std::{alloc::dealloc, any::TypeId, mem, ptr};
+use std::{any::TypeId, mem, ptr};
 
-use crate::{Imposter, ImposterDrop, MemoryBuilder};
+use crate::{Imposter, ImposterDrop, RawMemory};
 
 pub struct ImposterVec {
     typeid: TypeId,
-    memory: MemoryBuilder,
+    memory: RawMemory,
     len: usize,
     drop: Option<ImposterDrop>,
 }
@@ -21,7 +21,7 @@ impl ImposterVec {
     pub fn new<T: 'static>() -> Self {
         Self {
             typeid: TypeId::of::<T>(),
-            memory: MemoryBuilder::new::<T>(),
+            memory: RawMemory::new::<T>(),
             len: 0,
             drop: match mem::needs_drop::<T>() {
                 false => None,
@@ -34,7 +34,7 @@ impl ImposterVec {
     pub fn from_imposter(imposter: Imposter) -> Self {
         let mut vec = Self {
             typeid: imposter.type_id(),
-            memory: MemoryBuilder::from_layout(imposter.layout()),
+            memory: RawMemory::with_element_layout(imposter.layout()),
             len: 0,
             drop: imposter.drop_fn(),
         };
@@ -50,12 +50,8 @@ impl ImposterVec {
             return Some(imposter);
         }
 
-        unsafe {
-            self.push_raw_unchecked(imposter.data().as_ptr());
-            dealloc(imposter.data().as_ptr(), imposter.layout());
-            mem::forget(imposter);
-        }
-
+        unsafe { self.push_raw_unchecked(imposter.data().as_ptr()) };
+        imposter.forget();
         None
     }
 
@@ -68,42 +64,47 @@ impl ImposterVec {
         }
 
         let item_ptr = ptr::NonNull::from(&item).cast::<u8>().as_ptr();
-        unsafe {
-            self.push_raw_unchecked(item_ptr);
-        }
-
+        unsafe { self.push_raw_unchecked(item_ptr) };
         mem::forget(item);
         None
     }
 
     unsafe fn push_raw_unchecked(&mut self, item_ptr: *mut u8) {
-        let len = self.len;
-        if len == self.memory.capacity() {
-            let new_len = (self.memory.capacity() * 2).max(1);
-            self.memory.resize(new_len);
-            self.len = new_len;
+        let original_length = self.len;
+        if original_length == self.memory.capacity() {
+            let new_length = (self.memory.capacity() * 2).max(1);
+            self.memory.resize(new_length);
         }
 
-        let data_size = self.memory.layout().size();
-        let end = self.memory.ptr().add(len * data_size);
-        ptr::copy_nonoverlapping(item_ptr, end, data_size);
+        self.memory.copy_to_index_unchecked(item_ptr, self.len);
+        self.len += 1;
+    }
+
+    pub fn swap_remove(&mut self, index: usize) -> Imposter {
+        self.panic_out_of_bounds(index);
+        let imposter = unsafe {
+            let last_index = self.len - 1;
+            self.memory.swap_unchecked(index, last_index);
+            Imposter::from_raw(
+                self.memory.copy_to_alloc_unchecked(last_index),
+                self.typeid,
+                self.memory.element_layout(),
+                self.drop,
+            )
+        };
+
+        self.len -= 1;
+        imposter
     }
 
     /// Drops the value at `index` by swapping it with the last value
     pub fn swap_drop(&mut self, index: usize) {
-        if index >= self.len {
-            panic!("Index out of bounds");
-        }
-
-        let data_size = self.memory.layout().size();
-        let last_offset = (self.len - 1) * data_size;
-        let drop_offset = index * data_size;
+        self.panic_out_of_bounds(index);
         unsafe {
-            let last = self.memory.ptr().add(last_offset);
-            let drop = self.memory.ptr().add(drop_offset);
-            ptr::swap_nonoverlapping(last, drop, data_size);
+            self.memory.swap_unchecked(index, self.len);
+            let removed = self.memory.index_ptr_unchecked(self.len);
             if let Some(drop) = self.drop {
-                (drop)(last);
+                (drop)(removed);
             }
         }
         self.len -= 1;
@@ -117,7 +118,7 @@ impl ImposterVec {
                 self.len = 0;
                 if let Some(drop) = self.drop {
                     let mut ptr = self.memory.ptr();
-                    let data_size = self.memory.layout().size();
+                    let data_size = self.memory.element_layout().size();
                     (drop)(ptr);
                     for _ in 0..(len - 1) {
                         ptr = ptr.add(data_size);
@@ -136,6 +137,13 @@ impl ImposterVec {
     /// Returns `true` if the vec is empty
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    #[inline]
+    fn panic_out_of_bounds(&self, index: usize) {
+        if index >= self.len {
+            panic!("index out of bounds");
+        }
     }
 }
 
@@ -159,5 +167,18 @@ mod tests {
         vec.push_item(Test1(42));
         vec.push_imposter(Imposter::new(Test1(43)));
         assert!(vec.len() == 2);
+    }
+
+    #[test]
+    fn swap_remove_vec() {
+        let mut vec = ImposterVec::from_imposter(Imposter::new(Test1(42)));
+        vec.push_item(Test1(43));
+        vec.push_item(Test1(44));
+        let test = vec.swap_remove(0).downcast::<Test1>().unwrap();
+        assert!(test.0 == 42);
+        let test = vec.swap_remove(0).downcast::<Test1>().unwrap();
+        assert!(test.0 == 44);
+        let test = vec.swap_remove(0).downcast::<Test1>().unwrap();
+        assert!(test.0 == 43);
     }
 }

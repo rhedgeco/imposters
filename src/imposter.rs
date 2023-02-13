@@ -49,6 +49,20 @@ impl Imposter {
         }
     }
 
+    pub unsafe fn from_raw(
+        data: ptr::NonNull<u8>,
+        typeid: TypeId,
+        layout: Layout,
+        drop: Option<ImposterDrop>,
+    ) -> Self {
+        Self {
+            data,
+            typeid,
+            layout,
+            drop,
+        }
+    }
+
     /// Downcasts the data in this imposter to an owned type `T`.
     ///
     /// If `T` does not match the internal type, `None` is returned.
@@ -91,6 +105,12 @@ impl Imposter {
         // SAFETY:
         // raw pointer type is checked before conversion
         Some(unsafe { &mut *(self.data.as_ptr() as *mut T) })
+    }
+
+    /// Disposes of this imposter and deallocates the data it points to without calling its destructor
+    pub fn forget(self) {
+        unsafe { dealloc(self.data.as_ptr(), self.layout) };
+        mem::forget(self);
     }
 
     /// Returns a reference to the internal data pointer
