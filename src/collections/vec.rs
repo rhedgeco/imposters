@@ -80,8 +80,11 @@ impl ImposterVec {
         self.len += 1;
     }
 
-    pub fn swap_remove(&mut self, index: usize) -> Imposter {
-        self.panic_out_of_bounds(index);
+    pub fn swap_remove(&mut self, index: usize) -> Option<Imposter> {
+        if index >= self.len {
+            return None;
+        }
+
         let imposter = unsafe {
             let last_index = self.len - 1;
             self.memory.swap_unchecked(index, last_index);
@@ -94,12 +97,14 @@ impl ImposterVec {
         };
 
         self.len -= 1;
-        imposter
+        Some(imposter)
     }
 
     /// Drops the value at `index` by swapping it with the last value
-    pub fn swap_drop(&mut self, index: usize) {
-        self.panic_out_of_bounds(index);
+    pub fn swap_drop(&mut self, index: usize) -> bool {
+        if index >= self.len {
+            return false;
+        }
         unsafe {
             self.memory.swap_unchecked(index, self.len);
             let removed = self.memory.index_ptr_unchecked(self.len);
@@ -108,6 +113,7 @@ impl ImposterVec {
             }
         }
         self.len -= 1;
+        return true;
     }
 
     /// Clears all the elements in the vector, calling their drop function if necessary
@@ -138,13 +144,6 @@ impl ImposterVec {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
-
-    #[inline]
-    fn panic_out_of_bounds(&self, index: usize) {
-        if index >= self.len {
-            panic!("index out of bounds");
-        }
-    }
 }
 
 #[cfg(test)]
@@ -170,15 +169,26 @@ mod tests {
     }
 
     #[test]
+    fn swap_drop_vec() {
+        let mut vec = ImposterVec::from_imposter(Imposter::new(Test1(42)));
+        vec.push_item(Test1(43));
+        vec.push_item(Test1(44));
+        vec.swap_drop(1);
+        assert!(vec.len() == 2);
+        vec.swap_drop(2);
+        assert!(vec.len() == 2);
+    }
+
+    #[test]
     fn swap_remove_vec() {
         let mut vec = ImposterVec::from_imposter(Imposter::new(Test1(42)));
         vec.push_item(Test1(43));
         vec.push_item(Test1(44));
-        let test = vec.swap_remove(0).downcast::<Test1>().unwrap();
-        assert!(test.0 == 42);
-        let test = vec.swap_remove(0).downcast::<Test1>().unwrap();
-        assert!(test.0 == 44);
-        let test = vec.swap_remove(0).downcast::<Test1>().unwrap();
+        let test = vec.swap_remove(1).unwrap().downcast::<Test1>().unwrap();
         assert!(test.0 == 43);
+        let test = vec.swap_remove(0).unwrap().downcast::<Test1>().unwrap();
+        assert!(test.0 == 42);
+        let test = vec.swap_remove(0).unwrap().downcast::<Test1>().unwrap();
+        assert!(test.0 == 44);
     }
 }
