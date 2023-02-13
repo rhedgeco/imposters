@@ -85,7 +85,11 @@ impl ImposterVec {
             return None;
         }
 
-        let imposter = unsafe {
+        Some(unsafe { self.swap_remove_unchecked(index) })
+    }
+
+    pub unsafe fn swap_remove_unchecked(&mut self, index: usize) -> Imposter {
+        let imposter = {
             let last_index = self.len - 1;
             self.memory.swap_unchecked(index, last_index);
             Imposter::from_raw(
@@ -97,7 +101,7 @@ impl ImposterVec {
         };
 
         self.len -= 1;
-        Some(imposter)
+        imposter
     }
 
     /// Drops the value at `index` by swapping it with the last value
@@ -175,8 +179,12 @@ mod tests {
         vec.push_item(Test1(44));
         vec.swap_drop(1);
         assert!(vec.len() == 2);
-        vec.swap_drop(2);
+        assert!(!vec.swap_drop(2));
         assert!(vec.len() == 2);
+        vec.swap_drop(0);
+        assert!(vec.len() == 1);
+        vec.swap_drop(0);
+        assert!(vec.len() == 0);
     }
 
     #[test]
@@ -184,6 +192,7 @@ mod tests {
         let mut vec = ImposterVec::from_imposter(Imposter::new(Test1(42)));
         vec.push_item(Test1(43));
         vec.push_item(Test1(44));
+        assert!(vec.swap_remove(3).is_none());
         let test = vec.swap_remove(1).unwrap().downcast::<Test1>().unwrap();
         assert!(test.0 == 43);
         let test = vec.swap_remove(0).unwrap().downcast::<Test1>().unwrap();
