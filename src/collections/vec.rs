@@ -80,6 +80,28 @@ impl ImposterVec {
         self.len += 1;
     }
 
+    pub fn get<T: 'static>(&self, index: usize) -> Option<&T> {
+        if index >= self.len || TypeId::of::<T>() != self.typeid {
+            return None;
+        }
+
+        unsafe {
+            let index_ptr = self.memory.index_ptr_unchecked(index);
+            Some(&*(index_ptr as *mut T))
+        }
+    }
+
+    pub fn get_mut<T: 'static>(&mut self, index: usize) -> Option<&mut T> {
+        if index >= self.len || TypeId::of::<T>() != self.typeid {
+            return None;
+        }
+
+        unsafe {
+            let index_ptr = self.memory.index_ptr_unchecked(index);
+            Some(&mut *(index_ptr as *mut T))
+        }
+    }
+
     pub fn swap_remove(&mut self, index: usize) -> Option<Imposter> {
         if index >= self.len {
             return None;
@@ -110,8 +132,9 @@ impl ImposterVec {
             return false;
         }
         unsafe {
-            self.memory.swap_unchecked(index, self.len);
-            let removed = self.memory.index_ptr_unchecked(self.len);
+            let last_index = self.len - 1;
+            self.memory.swap_unchecked(index, last_index);
+            let removed = self.memory.index_ptr_unchecked(last_index);
             if let Some(drop) = self.drop {
                 (drop)(removed);
             }
