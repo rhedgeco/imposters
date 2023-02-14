@@ -44,13 +44,13 @@ impl RawMemory {
     }
 
     #[inline]
-    pub fn index_ptr(&mut self, index: usize) -> *mut u8 {
+    pub fn index_ptr(&self, index: usize) -> *mut u8 {
         self.panic_out_of_bounds(index);
         unsafe { self.index_ptr_unchecked(index) }
     }
 
     #[inline]
-    pub unsafe fn index_ptr_unchecked(&mut self, index: usize) -> *mut u8 {
+    pub unsafe fn index_ptr_unchecked(&self, index: usize) -> *mut u8 {
         self.ptr().add(index * self.element_layout.size())
     }
 
@@ -136,7 +136,7 @@ impl RawMemory {
     }
 
     #[inline]
-    pub fn ptr(&mut self) -> *mut u8 {
+    pub fn ptr(&self) -> *mut u8 {
         self.ptr.as_ptr()
     }
 
