@@ -51,7 +51,7 @@ impl ImposterVec {
         }
 
         unsafe { self.push_raw_unchecked(imposter.data().as_ptr()) };
-        imposter.forget();
+        imposter.dispose_and_forget();
         None
     }
 

@@ -107,8 +107,8 @@ impl Imposter {
         Some(unsafe { &mut *(self.data.as_ptr() as *mut T) })
     }
 
-    /// Disposes of this imposter and deallocates the data it points to without calling its destructor
-    pub fn forget(self) {
+    /// Disposes of this imposter and deallocates the data it points to ***without*** calling its destructor
+    pub fn dispose_and_forget(self) {
         unsafe { dealloc(self.data.as_ptr(), self.layout) };
         mem::forget(self);
     }
