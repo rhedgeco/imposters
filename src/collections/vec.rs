@@ -1,4 +1,4 @@
-use std::{any::TypeId, mem, ptr};
+use std::{any::TypeId, mem, ptr, slice};
 
 use crate::{Imposter, ImposterDrop, RawMemory};
 
@@ -69,7 +69,7 @@ impl ImposterVec {
         None
     }
 
-    unsafe fn push_raw_unchecked(&mut self, item_ptr: *mut u8) {
+    pub unsafe fn push_raw_unchecked(&mut self, item_ptr: *mut u8) {
         let original_length = self.len;
         if original_length == self.memory.capacity() {
             let new_length = (self.memory.capacity() * 2).max(1);
@@ -80,28 +80,35 @@ impl ImposterVec {
         self.len += 1;
     }
 
+    #[inline]
     pub fn get<T: 'static>(&self, index: usize) -> Option<&T> {
         if index >= self.len || TypeId::of::<T>() != self.typeid {
             return None;
         }
 
-        unsafe {
-            let index_ptr = self.memory.index_ptr_unchecked(index);
-            Some(&*(index_ptr as *mut T))
-        }
+        Some(unsafe { self.get_unchecked(index) })
     }
 
+    #[inline]
+    pub unsafe fn get_unchecked<'a, T: 'static>(&'a self, index: usize) -> &'a T {
+        &*(self.memory.index_ptr_unchecked(index) as *mut T)
+    }
+
+    #[inline]
     pub fn get_mut<T: 'static>(&mut self, index: usize) -> Option<&mut T> {
         if index >= self.len || TypeId::of::<T>() != self.typeid {
             return None;
         }
 
-        unsafe {
-            let index_ptr = self.memory.index_ptr_unchecked(index);
-            Some(&mut *(index_ptr as *mut T))
-        }
+        Some(unsafe { self.get_mut_unchecked(index) })
     }
 
+    #[inline]
+    pub unsafe fn get_mut_unchecked<'a, T: 'static>(&'a mut self, index: usize) -> &'a mut T {
+        &mut *(self.memory.index_ptr_unchecked(index) as *mut T)
+    }
+
+    #[inline]
     pub fn swap_remove(&mut self, index: usize) -> Option<Imposter> {
         if index >= self.len {
             return None;
@@ -163,13 +170,49 @@ impl ImposterVec {
     }
 
     /// Returns the number of items in the vec
+    #[inline]
     pub fn len(&self) -> usize {
         self.len
     }
 
     /// Returns `true` if the vec is empty
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    #[inline]
+    pub fn as_slice<T: 'static>(&self) -> Option<&[T]> {
+        if TypeId::of::<T>() != self.typeid {
+            return None;
+        }
+
+        Some(unsafe { slice::from_raw_parts::<'_, T>(self.memory.ptr() as *const T, self.len) })
+    }
+
+    #[inline]
+    pub fn as_slice_mut<T: 'static>(&mut self) -> Option<&mut [T]> {
+        if TypeId::of::<T>() != self.typeid {
+            return None;
+        }
+
+        Some(unsafe { slice::from_raw_parts_mut::<'_, T>(self.memory.ptr() as *mut T, self.len) })
+    }
+
+    #[inline]
+    pub fn iter<T: 'static>(&self) -> Option<slice::Iter<T>> {
+        match self.as_slice() {
+            None => None,
+            Some(slice) => Some(slice.iter()),
+        }
+    }
+
+    #[inline]
+    pub fn iter_mut<T: 'static>(&mut self) -> Option<slice::IterMut<T>> {
+        match self.as_slice_mut() {
+            None => None,
+            Some(slice) => Some(slice.iter_mut()),
+        }
     }
 }
 
