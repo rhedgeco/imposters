@@ -200,6 +200,18 @@ impl ImposterVec {
     }
 
     #[inline]
+    pub fn as_slice_ptr<T: 'static>(&self) -> Option<ptr::NonNull<[T]>> {
+        if TypeId::of::<T>() != self.typeid {
+            return None;
+        }
+
+        unsafe {
+            let slice = slice::from_raw_parts_mut::<'_, T>(self.memory.ptr() as *mut T, self.len);
+            Some(ptr::NonNull::new_unchecked(slice as *mut [T]))
+        }
+    }
+
+    #[inline]
     pub fn iter<T: 'static>(&self) -> Option<slice::Iter<T>> {
         match self.as_slice() {
             None => None,
