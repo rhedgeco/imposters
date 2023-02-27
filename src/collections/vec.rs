@@ -212,19 +212,31 @@ impl ImposterVec {
     }
 
     #[inline]
-    pub fn iter<T: 'static>(&self) -> Option<slice::Iter<T>> {
-        match self.as_slice() {
-            None => None,
-            Some(slice) => Some(slice.iter()),
-        }
+    pub fn iter<T: 'static>(&self) -> Iter {
+        Iter::new(self)
     }
+}
 
-    #[inline]
-    pub fn iter_mut<T: 'static>(&mut self) -> Option<slice::IterMut<T>> {
-        match self.as_slice_mut() {
-            None => None,
-            Some(slice) => Some(slice.iter_mut()),
+pub struct Iter<'a> {
+    vec: &'a ImposterVec,
+    index: usize,
+}
+
+impl<'a> Iter<'a> {
+    fn new(vec: &'a ImposterVec) -> Self {
+        Self { vec, index: 0 }
+    }
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = *mut u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.vec.len() {
+            return None;
         }
+
+        Some(unsafe { self.vec.memory.index_ptr_unchecked(self.index) })
     }
 }
 
