@@ -44,9 +44,12 @@ impl RawMemory {
     }
 
     #[inline]
-    pub fn index_ptr(&self, index: usize) -> *mut u8 {
-        self.panic_out_of_bounds(index);
-        unsafe { self.index_ptr_unchecked(index) }
+    pub fn index_ptr(&self, index: usize) -> Option<*mut u8> {
+        if index >= self.capacity {
+            return None;
+        }
+
+        Some(unsafe { self.index_ptr_unchecked(index) })
     }
 
     #[inline]

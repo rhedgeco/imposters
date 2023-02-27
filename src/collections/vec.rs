@@ -109,6 +109,20 @@ impl ImposterVec {
     }
 
     #[inline]
+    pub fn get_ptr(&self, index: usize) -> Option<*mut u8> {
+        if index >= self.len {
+            return None;
+        }
+
+        Some(unsafe { self.get_ptr_unchecked(index) })
+    }
+
+    #[inline]
+    pub unsafe fn get_ptr_unchecked(&self, index: usize) -> *mut u8 {
+        self.memory.index_ptr_unchecked(index)
+    }
+
+    #[inline]
     pub fn swap_remove(&mut self, index: usize) -> Option<Imposter> {
         if index >= self.len {
             return None;
