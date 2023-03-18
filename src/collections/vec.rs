@@ -32,41 +32,43 @@ impl ImposterVec {
 
     /// Creates a new `ImposterVec` with the initial value `imposter`
     pub fn from_imposter(imposter: Imposter) -> Self {
-        let mut vec = Self {
+        let mut memory = RawMemory::with_element_layout(imposter.layout());
+        memory.resize(1);
+        unsafe { memory.copy_to_index_unchecked(imposter.data().as_ptr(), 0) };
+
+        Self {
             typeid: imposter.type_id(),
-            memory: RawMemory::with_element_layout(imposter.layout()),
-            len: 0,
+            memory,
+            len: 1,
             drop: imposter.drop_fn(),
-        };
-        vec.push_imposter(imposter);
-        vec
+        }
     }
 
-    /// Appends an [`Imposter`] to the end of the vector, returning `None`.
+    /// Appends an [`Imposter`] to the end of the vector, returning `Ok(())`.
     ///
-    /// If the imposter is not valid for this vec, it will be returned as `Some(Imposter)`
-    pub fn push_imposter(&mut self, imposter: Imposter) -> Option<Imposter> {
+    /// If the imposter is not valid for this vec, it will be returned as `Err(Imposter)`
+    pub fn push_imposter(&mut self, imposter: Imposter) -> Result<(), Imposter> {
         if imposter.type_id() != self.typeid {
-            return Some(imposter);
+            return Err(imposter);
         }
 
         unsafe { self.push_raw_unchecked(imposter.data().as_ptr()) };
         imposter.dispose_and_forget();
-        None
+        Ok(())
     }
 
-    /// Appends `item` to the end of the vector, returning `None`.
+    /// Appends `item` to the end of the vector, returning `Ok(())`.
     ///
-    /// If the item is not valid for this vec, it will be returned as `Some(T)`
-    pub fn push_item<T: 'static>(&mut self, item: T) -> Option<T> {
+    /// If the item is not valid for this vec, it will be returned as `Err(T)`
+    pub fn push_item<T: 'static>(&mut self, item: T) -> Result<(), T> {
         if TypeId::of::<T>() != self.typeid {
-            return Some(item);
+            return Err(item);
         }
 
         let item_ptr = ptr::NonNull::from(&item).cast::<u8>().as_ptr();
         unsafe { self.push_raw_unchecked(item_ptr) };
         mem::forget(item);
-        None
+        Ok(())
     }
 
     pub unsafe fn push_raw_unchecked(&mut self, item_ptr: *mut u8) {
@@ -258,6 +260,7 @@ impl<'a> Iterator for Iter<'a> {
 mod tests {
     use super::*;
 
+    #[derive(Debug)]
     struct Test1(u32);
 
     #[test]
@@ -271,16 +274,16 @@ mod tests {
     #[test]
     fn push_imposter_vec() {
         let mut vec = ImposterVec::new::<Test1>();
-        vec.push_item(Test1(42));
-        vec.push_imposter(Imposter::new(Test1(43)));
+        vec.push_item(Test1(42)).unwrap();
+        vec.push_imposter(Imposter::new(Test1(43))).unwrap();
         assert!(vec.len() == 2);
     }
 
     #[test]
     fn swap_drop_vec() {
         let mut vec = ImposterVec::from_imposter(Imposter::new(Test1(42)));
-        vec.push_item(Test1(43));
-        vec.push_item(Test1(44));
+        vec.push_item(Test1(43)).unwrap();
+        vec.push_item(Test1(44)).unwrap();
         vec.swap_drop(1);
         assert!(vec.len() == 2);
         assert!(!vec.swap_drop(2));
@@ -294,8 +297,8 @@ mod tests {
     #[test]
     fn swap_remove_vec() {
         let mut vec = ImposterVec::from_imposter(Imposter::new(Test1(42)));
-        vec.push_item(Test1(43));
-        vec.push_item(Test1(44));
+        vec.push_item(Test1(43)).unwrap();
+        vec.push_item(Test1(44)).unwrap();
         assert!(vec.swap_remove(3).is_none());
         let test = vec.swap_remove(1).unwrap().downcast::<Test1>().unwrap();
         assert!(test.0 == 43);
