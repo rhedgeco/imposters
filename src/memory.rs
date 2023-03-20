@@ -3,6 +3,7 @@ use std::{
     ptr::{self, NonNull},
 };
 
+/// A bare bones memory management abstraction for the imposters library
 pub struct RawMemory {
     ptr: ptr::NonNull<u8>,
     capacity: usize,
@@ -10,6 +11,7 @@ pub struct RawMemory {
 }
 
 impl Drop for RawMemory {
+    #[inline]
     fn drop(&mut self) {
         if self.capacity == 0 {
             return;
@@ -27,6 +29,8 @@ impl Drop for RawMemory {
 }
 
 impl RawMemory {
+    /// Returns a new RawMemory struct that should hold items of type `T`
+    #[inline]
     pub fn new<T: 'static>() -> Self {
         Self {
             ptr: ptr::NonNull::<T>::dangling().cast(),
@@ -35,6 +39,8 @@ impl RawMemory {
         }
     }
 
+    /// Returns a new RawMemory struct with a given item `layout`
+    #[inline]
     pub fn with_element_layout(layout: Layout) -> Self {
         Self {
             ptr: Self::create_dangling_ptr(&layout),
@@ -43,38 +49,30 @@ impl RawMemory {
         }
     }
 
-    #[inline]
-    pub fn index_ptr(&self, index: usize) -> Option<*mut u8> {
-        if index >= self.capacity {
-            return None;
-        }
-
-        Some(unsafe { self.index_ptr_unchecked(index) })
-    }
-
+    /// Returns a pointer to the given `index`
+    ///
+    /// # Safety
+    /// `index` must be in bounds
     #[inline]
     pub unsafe fn index_ptr_unchecked(&self, index: usize) -> *mut u8 {
         self.ptr().add(index * self.element_layout.size())
     }
 
-    #[inline]
-    pub fn copy_to_index(&mut self, src: *const u8, index: usize) {
-        self.panic_out_of_bounds(index);
-        unsafe { self.copy_to_index_unchecked(src, index) };
-    }
-
+    /// Copies data from `src` into the given `index`
+    ///
+    /// # Safety
+    /// `src` data type must match the type for this memory
+    /// `index` must be in bounds
     #[inline]
     pub unsafe fn copy_to_index_unchecked(&mut self, src: *const u8, index: usize) {
         let index_ptr = self.index_ptr_unchecked(index);
         ptr::copy_nonoverlapping(src, index_ptr, self.element_layout.size())
     }
 
-    #[inline]
-    pub fn copy_to_alloc(&self, index: usize) -> ptr::NonNull<u8> {
-        self.panic_out_of_bounds(index);
-        unsafe { self.copy_to_alloc_unchecked(index) }
-    }
-
+    /// Allocates new memory and copies the item at `index` to that location
+    ///
+    /// # Safety
+    /// `index` must be in bounds
     #[inline]
     pub unsafe fn copy_to_alloc_unchecked(&self, index: usize) -> ptr::NonNull<u8> {
         let index_ptr = self.ptr.as_ptr().add(index * self.element_layout.size());
@@ -86,13 +84,10 @@ impl RawMemory {
         NonNull::new_unchecked(new_ptr)
     }
 
-    #[inline]
-    pub fn swap(&mut self, x: usize, y: usize) {
-        self.panic_out_of_bounds(x);
-        self.panic_out_of_bounds(y);
-        unsafe { self.swap_unchecked(x, y) };
-    }
-
+    /// Swaps the items at `x` and `y`
+    ///
+    /// # Safety
+    /// `x` and `y` must both be in bounds
     #[inline]
     pub unsafe fn swap_unchecked(&mut self, x: usize, y: usize) {
         if x == y {
@@ -108,6 +103,11 @@ impl RawMemory {
         );
     }
 
+    /// Resizes this block of memory to match `new_capacity`
+    ///
+    /// If shrinking, this will technically forget the items at the end of the memory.
+    /// Those items will not be dropped. While this may be unfavorable it is not technically undefined
+    /// as [`std::mem::forget`] is also marked as safe.
     pub fn resize(&mut self, new_capacity: usize) {
         if self.capacity == new_capacity || self.element_layout.size() == 0 {
             return;
@@ -138,21 +138,25 @@ impl RawMemory {
         self.capacity = new_capacity;
     }
 
+    /// Returns a pointer to the beginning of this memory block
     #[inline]
     pub fn ptr(&self) -> *mut u8 {
         self.ptr.as_ptr()
     }
 
+    /// Returns the current capacity of this memory block
     #[inline]
     pub fn capacity(&self) -> usize {
         self.capacity
     }
 
+    /// Returns the associated element layout of this memory block
     #[inline]
     pub fn element_layout(&self) -> Layout {
         self.element_layout
     }
 
+    /// Returns the layout for the entirety of this memory block
     #[inline]
     pub fn memory_layout(&self) -> Layout {
         unsafe {
@@ -166,14 +170,8 @@ impl RawMemory {
         }
     }
 
-    #[inline]
-    fn panic_out_of_bounds(&self, index: usize) {
-        if index >= self.capacity {
-            panic!("index out of bounds");
-        }
-    }
-
-    /// Creates a dangling pointer with a specified layout
+    /// Creates a dangling pointer with a specified layout.
+    /// This is abstracted to allow for MIRI to make smarter pointer checks.
     ///
     /// # Safety
     /// This pointer is dangling and invalid.

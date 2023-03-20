@@ -2,6 +2,7 @@ use std::{any::TypeId, mem, ptr, slice};
 
 use crate::{Imposter, ImposterDrop, RawMemory};
 
+/// A type erased vector
 pub struct ImposterVec {
     typeid: TypeId,
     memory: RawMemory,
@@ -59,7 +60,7 @@ impl ImposterVec {
 
     /// Appends `item` to the end of the vector, returning `Ok(())`.
     ///
-    /// If the item is not valid for this vec, it will be returned as `Err(T)`
+    /// If the item is not valid for this vec, it will be given back as `Some(T)`
     pub fn push_item<T: 'static>(&mut self, item: T) -> Result<(), T> {
         if TypeId::of::<T>() != self.typeid {
             return Err(item);
@@ -71,6 +72,10 @@ impl ImposterVec {
         Ok(())
     }
 
+    /// Appends `item` to the end of the vector
+    ///
+    /// # Safety
+    /// `item_ptr` must point to a type that matches this vec
     pub unsafe fn push_raw_unchecked(&mut self, item_ptr: *mut u8) {
         let original_length = self.len;
         if original_length == self.memory.capacity() {
@@ -82,6 +87,9 @@ impl ImposterVec {
         self.len += 1;
     }
 
+    /// Returns a reference to the item of type `T` stored at `index` as `Some(&T)`
+    ///
+    /// If `T` does not match this vecs type, ot the index is out of bounds, returns `None`
     #[inline]
     pub fn get<T: 'static>(&self, index: usize) -> Option<&T> {
         if index >= self.len || TypeId::of::<T>() != self.typeid {
@@ -91,11 +99,19 @@ impl ImposterVec {
         Some(unsafe { self.get_unchecked(index) })
     }
 
+    /// Returns a reference to the item of type `T` stored at `index`
+    ///
+    /// # Safety
+    /// - `T` must match this vecs type
+    /// - `index` must be valid
     #[inline]
-    pub unsafe fn get_unchecked<'a, T: 'static>(&'a self, index: usize) -> &'a T {
+    pub unsafe fn get_unchecked<T: 'static>(&self, index: usize) -> &T {
         &*(self.memory.index_ptr_unchecked(index) as *mut T)
     }
 
+    /// Returns a mutable reference to the item of type `T` stored at `index` as `Some(&T)`
+    ///
+    /// If `T` does not match this vecs type, ot the index is out of bounds, returns `None`
     #[inline]
     pub fn get_mut<T: 'static>(&mut self, index: usize) -> Option<&mut T> {
         if index >= self.len || TypeId::of::<T>() != self.typeid {
@@ -105,11 +121,19 @@ impl ImposterVec {
         Some(unsafe { self.get_mut_unchecked(index) })
     }
 
+    /// Returns a mutable reference to the item of type `T` stored at `index`
+    ///
+    /// # Safety
+    /// - `T` must match this vecs type
+    /// - `index` must be valid
     #[inline]
-    pub unsafe fn get_mut_unchecked<'a, T: 'static>(&'a mut self, index: usize) -> &'a mut T {
+    pub unsafe fn get_mut_unchecked<T: 'static>(&mut self, index: usize) -> &mut T {
         &mut *(self.memory.index_ptr_unchecked(index) as *mut T)
     }
 
+    /// Returns an untyped pointer to the item at `index` as `Some(*mut u8)`
+    ///
+    /// Returns `None` if the index is out of bounds
     #[inline]
     pub fn get_ptr(&self, index: usize) -> Option<*mut u8> {
         if index >= self.len {
@@ -119,11 +143,18 @@ impl ImposterVec {
         Some(unsafe { self.get_ptr_unchecked(index) })
     }
 
+    /// Returns an untyped pointer to the item at `index`
+    ///
+    /// # Safety
+    /// `index` must be in bounds for this vec
     #[inline]
     pub unsafe fn get_ptr_unchecked(&self, index: usize) -> *mut u8 {
         self.memory.index_ptr_unchecked(index)
     }
 
+    /// Removes and returns the [`Imposter`] at `index`, swapping it with the last item in the vec
+    ///
+    /// Returns `None` if `index` is out of bounds
     #[inline]
     pub fn swap_remove(&mut self, index: usize) -> Option<Imposter> {
         if index >= self.len {
@@ -133,6 +164,10 @@ impl ImposterVec {
         Some(unsafe { self.swap_remove_unchecked(index) })
     }
 
+    /// Removes and returns the [`Imposter`] at `index`, swapping it with the last item in the vec
+    ///
+    /// # Safety
+    /// `index` must be valid for this vec
     pub unsafe fn swap_remove_unchecked(&mut self, index: usize) -> Imposter {
         let imposter = {
             let last_index = self.len - 1;
@@ -149,7 +184,9 @@ impl ImposterVec {
         imposter
     }
 
-    /// Drops the value at `index` by swapping it with the last value
+    /// Drops the value at `index` by swapping it with the last value, returning `true`
+    ///
+    /// Returns `false` if the index is out of bounds, and does not drop anything
     pub fn swap_drop(&mut self, index: usize) -> bool {
         if index >= self.len {
             return false;
@@ -163,13 +200,13 @@ impl ImposterVec {
             }
         }
         self.len -= 1;
-        return true;
+        true
     }
 
     /// Clears all the elements in the vector, calling their drop function if necessary
     pub fn clear(&mut self) {
         match self.len {
-            0 => return,
+            0 => (),
             len => unsafe {
                 self.len = 0;
                 if let Some(drop) = self.drop {
@@ -197,6 +234,9 @@ impl ImposterVec {
         self.len() == 0
     }
 
+    /// Returns this vec as a reference to slice of type `T`
+    ///
+    /// Returns `None` if `T` does not match this vecs type
     #[inline]
     pub fn as_slice<T: 'static>(&self) -> Option<&[T]> {
         if TypeId::of::<T>() != self.typeid {
@@ -206,6 +246,9 @@ impl ImposterVec {
         Some(unsafe { slice::from_raw_parts::<'_, T>(self.memory.ptr() as *const T, self.len) })
     }
 
+    /// Returns this vec as a mutable reference to slice of type `T`
+    ///
+    /// Returns `None` if `T` does not match this vecs type
     #[inline]
     pub fn as_slice_mut<T: 'static>(&mut self) -> Option<&mut [T]> {
         if TypeId::of::<T>() != self.typeid {
@@ -215,6 +258,9 @@ impl ImposterVec {
         Some(unsafe { slice::from_raw_parts_mut::<'_, T>(self.memory.ptr() as *mut T, self.len) })
     }
 
+    /// Returns this vec as a pointer to a slice of type `T`
+    ///
+    /// Returns `None` if `T` does not match this vecs type
     #[inline]
     pub fn as_slice_ptr<T: 'static>(&self) -> Option<ptr::NonNull<[T]>> {
         if TypeId::of::<T>() != self.typeid {
@@ -227,12 +273,17 @@ impl ImposterVec {
         }
     }
 
+    /// Returns an iterator over all the elements of this vec
+    ///
+    /// This iterator will use untyped pointer references to each item.
+    /// If you want a typed iterater, first use `as_slice<T>` or `as_slice_mut<T>` and iterate over the slice instead.
     #[inline]
-    pub fn iter<T: 'static>(&self) -> Iter {
+    pub fn iter(&self) -> Iter {
         Iter::new(self)
     }
 }
 
+/// An iterator over the raw pointers in a [`ImposterVec`]
 pub struct Iter<'a> {
     vec: &'a ImposterVec,
     index: usize,
@@ -275,7 +326,7 @@ mod tests {
     fn push_imposter_vec() {
         let mut vec = ImposterVec::new::<Test1>();
         vec.push_item(Test1(42)).unwrap();
-        vec.push_imposter(Imposter::new(Test1(43))).unwrap();
+        vec.push_imposter(Imposter::new(Test1(43))).ok().unwrap();
         assert!(vec.len() == 2);
     }
 

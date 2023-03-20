@@ -9,7 +9,6 @@ pub type ImposterDrop = unsafe fn(ptr: *mut u8);
 /// # ඞ IMPOSTER ඞ
 ///
 /// A type erased wrapper around any kind of data
-#[derive(Debug)]
 pub struct Imposter {
     data: ptr::NonNull<u8>,
     typeid: TypeId,
