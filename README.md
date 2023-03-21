@@ -42,22 +42,22 @@ While using `Box<dyn Any>` may achieve the same outcome in terms of state, it is
 
 ### ***What do I mean by pointer indirection?***
 
-Well if we take a struct and wrap it in a `Box<dyn Any>`. We get our first level of indirection and unique allocation. When we convert our struct to a `dyn Any` and box it up, it converts it into whats called a *fat-pointer*. The boxed trait holds a pointer to the location of the data, and a pointer to the v-table for the trait. Not only that but the box allocates memory on the heap, and stores these two pointers there. NOT ONLY THAT, but now if we create a `Vec` to store multiple of these, the vec allocates its own memory on the heap and stores the boxes in there!
+Well if we take a struct and wrap it in a `Box<dyn Any>`. We get our first level of indirection and unique allocation. When we convert our struct to a `dyn Any` and box it up, it converts it into what's called a *fat-pointer*. The boxed trait holds a pointer to the location of the data, and a pointer to the vtable for the trait. Not only that but the box allocates memory on the heap and stores these two pointers there. NOT ONLY THAT but now if we create a `Vec` to store multiple of these, the vector allocates its own memory on the heap and stores the boxes in there!
 
 So to get the original data back, we have to index into the `Vec`, and then take the pointer in the box to the *ACTUAL* location of data, which is quite roundabout. And it wrecks our cache efficiency too!
 
-### ***Whats all this about cache efficiency?***
+### ***What's all this about cache efficiency?***
 
-Modern computers have multiple places that data is stored, and typically the closer to the CPU that data is, the faster it is to access. Obviously the worst place for the data to be is on another computer. Not as bad but still slow is on the computers hard disk. Then we get into RAM. Ram is definitely fast, but there is *much* faster. Right next to the CPU are generally L1 and L2 cache. L1 and L2 are *BLAZINGLY FAST*.
+Modern computers have multiple places where data is stored, and typically the closest to the CPU that data is, the faster it is to access. Obviously, the worst place for the data to be is on another computer. Not as bad but still slow is the computer's hard disk. Then we get into RAM. Ram is definitely fast, but there is *much* faster. Right next to the CPU are generally L1 and L2 caches. L1 and L2 are *BLAZINGLY FAST*.
 
-When data from a certain location is accessed, first the CPU checks the L1 cache, if it isn't there it checks L2, and if it isn't there it loads the location from RAM. But it also loads the data around it as well. This is because its often good practice to keep all the data you need for something next to each other. So when you load the next piece of data, it might already be in one of those cache levels.
+When data from a certain location is accessed, first the CPU checks the L1 cache, if it isn't there it checks L2, and if it isn't there it loads the location from RAM. But it also loads the data around it as well. This is because it's often good practice to keep all the data you need for something next to each other. So when you load the next piece of data, it might already be in one of those cache levels.
 
-But as we talked about, when accessing all this data in the `Vec<Box<dyn Any>>`. All this gets thrown out the window as the data is stored in numerous different places in RAM. So when accessing an item in the vec, we can be almost certain that the data will never be in the L1 or L2 cache. This is whats called a **cache-miss** and many try their absolute hardest to avoid them in performance critical contexts.
+But as we talked about when accessing all this data in the `Vec<Box<dyn Any>>`, all this gets thrown out the window as the data is stored in numerous different places in RAM. So when accessing an item in the vector, we can be almost certain that the data will never be in the L1 or L2 cache. This is what's called a **cache-miss** and many try their absolute hardest to avoid them in performance-critical contexts.
 
-### ***So what does the `imposters` library do different?***
+### ***So what does the `imposters` library do differently?***
 
 While the `Imposter` struct is very similar to a `Box<dyn Any>` as it holds a pointer to the data and a pointer to the drop function, among some other metadata. The `ImposterVec` (and potentially future collections) is where this library really shines.
 
-When inserting data or and `Imposter` into an `ImposterVec`, all layers of indirection are scrubbed. The imposter source data is copied into the array inside the vec. This means that the data that needs to be accessed sits right next its other data in an as tightly packed configuration as possible. Thus, there is only 1 pointer involved that points to the start of the array with no other indirection. And because of this, when iterating over the vec, as much of the memory will be **cache-hits** as often as possible keeping your code ***Blazingly Fast™***.
+When inserting data or an `Imposter` into an `ImposterVec`, all layers of indirection are scrubbed. The imposter source data is copied into the array inside the vector. This means that the data that needs to be accessed sits right next to its other data in a tightly packed configuration. Thus, there is only 1 pointer involved that points to the start of the array with no other indirection. And because of this, when iterating over the vector, as much of the memory will be **cache-hits** as often as possible keeping your code ***Blazingly Fast™***.
 
 ## [MIT LICENSE](./LICENSE.txt)
