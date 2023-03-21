@@ -1,5 +1,7 @@
 # ඞ IMPOSTERS ඞ
 
+[![Rust](https://github.com/rhedgeco/imposters/actions/workflows/rust.yml/badge.svg)](https://github.com/rhedgeco/imposters/actions/workflows/rust.yml)
+
 Imposters is a rust library for creating and managing type erased item collections.
 
 ## Usage
