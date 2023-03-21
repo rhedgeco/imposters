@@ -32,6 +32,6 @@ let imposter = Imposter::new(MyStruct::new());
 let vec = ImposterVec::from_imposter(imposter);
 ```
 
-> The `Imposter` struct has to store a bit of extra data long with the pointer to the original data like the `Layout`, `TypeId`, and drop function. However, when it is inserted into a vec, that information is scrubbed and the data is copied into a tightly packed array. This allows for incredibly fast iteration over the contained data without extra bloat.
+> The `Imposter` struct has to store a bit of extra data along with the pointer to the original data like the `Layout`, `TypeId`, and drop function. However, when it is inserted into a vec, that information is scrubbed and the data is copied into a tightly packed array. This allows for incredibly fast iteration over the contained data without extra bloat.
 
 ## [MIT LICENSE](./LICENSE.txt)
