@@ -25,4 +25,4 @@ jobs:
     - name: Setup Miri
       run: cargo +nightly miri setup
     - name: Run tests with Miri
-      run: cargo +nightly miri
+      run: cargo +nightly miri test
