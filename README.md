@@ -18,7 +18,7 @@ So to get the original data back, we have to index into the `Vec`, then take the
 
 Modern computers have multiple places that data is stored, and typically the closer to the CPU that data is, the faster it is to access. Obviously the worst place for the data to be is on another computer. Not as bad but still slow is on the computers hard disk. Then we get into RAM. Ram is definitely fast, but there is *much* faster. Right next to the CPU are generally L1 and L2 cache. L1 and L2 are *BLAZINGLY FAST*.
 
-When data from a certain location is accessed, first the CPU checks the L1 cache, if it isnt there it checks L2, and if it isnt there it loads the location from RAM. But it also loads the data around it as well. This is because its often good practice to keep all the data you need for something next to eachother. So when you load the next piece of data, it might alread be in one of those cache levels.
+When data from a certain location is accessed, first the CPU checks the L1 cache, if it isn't there it checks L2, and if it isn't there it loads the location from RAM. But it also loads the data around it as well. This is because its often good practice to keep all the data you need for something next to each other. So when you load the next piece of data, it might already be in one of those cache levels.
 
 But as we talked about, when accessing all this data in the `Vec<Box<dyn Any>>`. All this gets thrown out the window as the data is stored in numerous different places in RAM. So when accessing an item in the vec, we can be almost certain that the data will never be in the L1 or L2 cache. This is whats called a **cache-miss** and many try their absolute hardest to avoid them in performance critical contexts.
 
@@ -26,7 +26,7 @@ But as we talked about, when accessing all this data in the `Vec<Box<dyn Any>>`.
 
 While the `Imposter` struct is very similar to a `Box<dyn Any>` as it holds a pointer to the data and a pointer to the drop function, among some other metadata. The `ImposterVec` (and potentially future collections) is where this library really shines.
 
-When inserting data or and `Imposter` into an `ImposterVec`, all layers of indirection are scrubbed. The imposter source data is copied into the array inside the vec. This means that the data that needs to be accessed sits right next its other data in an as tightly packed configuration as possible. Thus, there is only 1 pointer involved that points to the start of the array with no other indirection. And because of this, when iteraing over the vec, as much of the memory will be **cache-hits** as often as possible keeping your code ***Blazingly Fast™***.
+When inserting data or and `Imposter` into an `ImposterVec`, all layers of indirection are scrubbed. The imposter source data is copied into the array inside the vec. This means that the data that needs to be accessed sits right next its other data in an as tightly packed configuration as possible. Thus, there is only 1 pointer involved that points to the start of the array with no other indirection. And because of this, when iterating over the vec, as much of the memory will be **cache-hits** as often as possible keeping your code ***Blazingly Fast™***.
 
 ## Usage
 
@@ -43,17 +43,17 @@ Imposters can be downcast to retrieve the original items back out:
 let original = imposter.downcast::<MyStruct>().unwrap();
 ```
 
-> While imposters do erase the type and contain only a pointer to the original, the drop function for that type are stored as well. This means that if an `Imposeter` is dropped, it will correctly call the drop function for the underlying type as well.
+> While imposters do erase the type and contain only a pointer to the original, the drop function for that type are stored as well. This means that if an `Imposter` is dropped, it will correctly call the drop function for the underlying type as well.
 
 Storing data in a type erased collection:
 
 ```rust
-// Imposter vecs may be created when the struct type is known
+// ImposterVec may be created when the struct type is known
 let mut vec = ImposterVec::new::<MyStruct>();
 vec.push_item(MyStruct::new());
 
 // But also may be directly created from an imposter itself.
-// This allows creation of new vecs without needing to know the containing type.
+// This allows creation of new vectors without needing to know the containing type.
 let imposter = Imposter::new(MyStruct::new());
 let vec = ImposterVec::from_imposter(imposter);
 ```
