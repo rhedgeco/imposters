@@ -38,13 +38,13 @@ let vec = ImposterVec::from_imposter(imposter);
 
 ## Why not use `Box<dyn Any>` or `Vec<Box<dyn Any>>`?
 
-While using `Box<dyn Any>` may achieve the same outcome in terms of state, it is severely lacking in speed and efficiency. A `Box` allocates space for its own memory, so what you end up getting when using `Vec<Box<dyn Any>>` is **multiple** levels of pointer indirection. Not only does this come at the cost of incredibly bad cache efficiency, but even if we forgot about that, having to move down 3 different pointers is pretty overkill for whats trying to be achieved.
+While using `Box<dyn Any>` may achieve the same outcome in terms of state, it is severely lacking in speed and efficiency. A `Box` allocates space for its own memory, so what you end up getting when using `Vec<Box<dyn Any>>` is **multiple** levels of pointer indirection. And this comes at the cost of really bad cache efficiency.
 
 ### ***What do I mean by pointer indirection?***
 
-Well if we take a struct and wrap it in a `Box<dyn Any>`. We get our first two levels of indirection and unique allocation. When we convert our struct to a `dyn Any`, it converts it into whats called a *fat-pointer*. The trait holds a pointer to the location of the data, and a pointer to the data itself. Not only that but then we wrap it in a `Box`. The box then allocates memory on the heap, and stores these two pointers there. Then the box stores the location of that data as a pointer. *We are now two pointers deep just to create the boxed any*. NOT ONLY THAT, but now if we create a `Vec` to store multiple of these, the vec allocates its own memory on the heap and stores the boxes in there!
+Well if we take a struct and wrap it in a `Box<dyn Any>`. We get our first level of indirection and unique allocation. When we convert our struct to a `dyn Any` and box it up, it converts it into whats called a *fat-pointer*. The boxed trait holds a pointer to the location of the data, and a pointer to the v-table for the trait. Not only that but the box allocates memory on the heap, and stores these two pointers there. NOT ONLY THAT, but now if we create a `Vec` to store multiple of these, the vec allocates its own memory on the heap and stores the boxes in there!
 
-So to get the original data back, we have to index into the `Vec`, then take the pointer in the box to the location of the `dyn Any`, then take the pointer in the `Any` to the location of the actual data. WOW that was roundabout. AND it wrecks our cache efficiency too!
+So to get the original data back, we have to index into the `Vec`, and then take the pointer in the box to the *ACTUAL* location of data, which is quite roundabout. And it wrecks our cache efficiency too!
 
 ### ***Whats all this about cache efficiency?***
 
