@@ -24,7 +24,10 @@ impl Drop for Imposter {
             if let Some(drop) = self.drop {
                 (drop)(ptr);
             }
-            dealloc(ptr, self.layout);
+
+            if self.layout.size() != 0 {
+                dealloc(ptr, self.layout);
+            }
         }
     }
 }
