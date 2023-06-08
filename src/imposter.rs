@@ -53,7 +53,7 @@ impl Imposter {
         }
     }
 
-    pub unsafe fn from_raw(
+    pub(crate) unsafe fn from_raw(
         data: ptr::NonNull<u8>,
         typeid: TypeId,
         layout: Layout,
@@ -87,7 +87,7 @@ impl Imposter {
     ///
     /// If `T` does not match the internal type, `None` is returned.
     #[inline]
-    pub fn downcast_ref<'a, T: 'static>(&'a self) -> Option<&'a T> {
+    pub fn downcast_ref<T: 'static>(&self) -> Option<&T> {
         if self.typeid != TypeId::of::<T>() {
             return None;
         }
@@ -101,7 +101,7 @@ impl Imposter {
     ///
     /// If `T` does not match the internal type, `None` is returned.
     #[inline]
-    pub fn downcast_mut<'a, T: 'static>(&'a mut self) -> Option<&'a mut T> {
+    pub fn downcast_mut<T: 'static>(&mut self) -> Option<&mut T> {
         if self.typeid != TypeId::of::<T>() {
             return None;
         }
@@ -143,7 +143,7 @@ impl Imposter {
 
     /// This is the function used if data needs to be dropped inside a imposter
     #[inline]
-    pub unsafe fn drop_impl<T>(ptr: *mut u8) {
+    pub(crate) unsafe fn drop_impl<T>(ptr: *mut u8) {
         ptr::drop_in_place(ptr as *mut T);
     }
 }
