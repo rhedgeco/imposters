@@ -4,6 +4,7 @@ use std::{
 };
 
 /// A bare bones memory management abstraction for the imposters library
+#[derive(Debug)]
 pub struct RawMemory {
     ptr: ptr::NonNull<u8>,
     capacity: usize,

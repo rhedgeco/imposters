@@ -3,6 +3,7 @@ use std::{any::TypeId, mem, ptr, slice};
 use crate::{Imposter, ImposterDrop, RawMemory};
 
 /// A type erased vector
+#[derive(Debug)]
 pub struct ImposterVec {
     typeid: TypeId,
     memory: RawMemory,
