@@ -20,6 +20,7 @@ impl Drop for ImposterVec {
 
 impl ImposterVec {
     /// Creates a new `ImposterVec` that can hold items of type `T`
+    #[inline]
     pub fn new<T: 'static>() -> Self {
         Self {
             typeid: TypeId::of::<T>(),
@@ -33,6 +34,7 @@ impl ImposterVec {
     }
 
     /// Creates a new `ImposterVec` with the initial value `imposter`
+    #[inline]
     pub fn from_imposter(imposter: Imposter) -> Self {
         let mut memory = RawMemory::with_element_layout(imposter.layout());
         memory.resize(1);
@@ -46,37 +48,64 @@ impl ImposterVec {
         }
     }
 
+    /// Returns the [`TypeId`] of the items contained in this vec
+    #[inline]
+    pub fn type_id(&self) -> TypeId {
+        self.typeid
+    }
+
     /// Appends an [`Imposter`] to the end of the vector, returning `Ok(())`.
     ///
     /// If the imposter is not valid for this vec, it will be returned as `Err(Imposter)`
+    #[inline]
     pub fn push_imposter(&mut self, imposter: Imposter) -> Result<(), Imposter> {
         if imposter.type_id() != self.typeid {
             return Err(imposter);
         }
 
-        unsafe { self.push_raw_unchecked(imposter.data().as_ptr()) };
-        imposter.dispose_and_forget();
+        unsafe { self.push_imposter_unchecked(imposter) };
         Ok(())
+    }
+
+    /// Appends an [`Imposter`] to the end of the vector, returning `Ok(())`.
+    ///
+    /// # Safety
+    /// the `imposter` type must match the type of this vec
+    #[inline]
+    pub unsafe fn push_imposter_unchecked(&mut self, imposter: Imposter) {
+        self.push_raw_unchecked(imposter.data().as_ptr());
+        imposter.dispose_and_forget();
     }
 
     /// Appends `item` to the end of the vector, returning `Ok(())`.
     ///
     /// If the item is not valid for this vec, it will be given back as `Some(T)`
+    #[inline]
     pub fn push_item<T: 'static>(&mut self, item: T) -> Result<(), T> {
-        if TypeId::of::<T>() != self.typeid {
+        if self.is_type::<T>() {
             return Err(item);
         }
 
-        let item_ptr = ptr::NonNull::from(&item).cast::<u8>().as_ptr();
-        unsafe { self.push_raw_unchecked(item_ptr) };
-        mem::forget(item);
+        unsafe { self.push_item_unchecked(item) };
         Ok(())
     }
 
-    /// Appends `item` to the end of the vector
+    /// Appends `item` to the end of the vector, returning `Ok(())`.
+    ///
+    /// # Safety
+    /// type `T` must match this vecs type
+    #[inline]
+    pub unsafe fn push_item_unchecked<T: 'static>(&mut self, item: T) {
+        let item_ptr = ptr::NonNull::from(&item).cast::<u8>().as_ptr();
+        self.push_raw_unchecked(item_ptr);
+        mem::forget(item);
+    }
+
+    /// Appends `item_ptr` to the end of the vector
     ///
     /// # Safety
     /// `item_ptr` must point to a type that matches this vec
+    #[inline]
     pub unsafe fn push_raw_unchecked(&mut self, item_ptr: *mut u8) {
         let original_length = self.len;
         if original_length == self.memory.capacity() {
@@ -93,7 +122,7 @@ impl ImposterVec {
     /// If `T` does not match this vecs type, ot the index is out of bounds, returns `None`
     #[inline]
     pub fn get<T: 'static>(&self, index: usize) -> Option<&T> {
-        if index >= self.len || TypeId::of::<T>() != self.typeid {
+        if index >= self.len || self.is_type::<T>() {
             return None;
         }
 
@@ -115,7 +144,7 @@ impl ImposterVec {
     /// If `T` does not match this vecs type, ot the index is out of bounds, returns `None`
     #[inline]
     pub fn get_mut<T: 'static>(&mut self, index: usize) -> Option<&mut T> {
-        if index >= self.len || TypeId::of::<T>() != self.typeid {
+        if index >= self.len || self.is_type::<T>() {
             return None;
         }
 
@@ -169,6 +198,7 @@ impl ImposterVec {
     ///
     /// # Safety
     /// `index` must be valid for this vec
+    #[inline]
     pub unsafe fn swap_remove_unchecked(&mut self, index: usize) -> Imposter {
         let imposter = {
             let last_index = self.len - 1;
@@ -188,6 +218,7 @@ impl ImposterVec {
     /// Drops the value at `index` by swapping it with the last value, returning `true`
     ///
     /// Returns `false` if the index is out of bounds, and does not drop anything
+    #[inline]
     pub fn swap_drop(&mut self, index: usize) -> bool {
         if index >= self.len {
             return false;
@@ -205,6 +236,7 @@ impl ImposterVec {
     }
 
     /// Clears all the elements in the vector, calling their drop function if necessary
+    #[inline]
     pub fn clear(&mut self) {
         match self.len {
             0 => (),
@@ -235,16 +267,56 @@ impl ImposterVec {
         self.len() == 0
     }
 
+    /// Returns true if `T` matches the internal item type
+    #[inline]
+    pub fn is_type<T: 'static>(&self) -> bool {
+        TypeId::of::<T>() != self.typeid
+    }
+
+    /// Converts this `ImposterVec` into a typed [`Vec`]
+    ///
+    /// Returns `Err(Self)` if `T` does not match this vec's type
+    #[inline]
+    pub fn into_vec<T: 'static>(self) -> Result<Vec<T>, Self> {
+        if self.is_type::<T>() {
+            return Err(self);
+        }
+
+        Ok(unsafe { self.into_vec_unchecked() })
+    }
+
+    /// Converts this `ImposterVec` into a typed [`Vec`]
+    ///
+    /// # Safety
+    /// type `T` must match this vecs type
+    #[inline]
+    pub unsafe fn into_vec_unchecked<T: 'static>(self) -> Vec<T> {
+        Vec::from_raw_parts(
+            self.memory.ptr() as *mut T,
+            self.len,
+            self.memory.capacity(),
+        )
+    }
+
     /// Returns this vec as a reference to slice of type `T`
     ///
     /// Returns `None` if `T` does not match this vecs type
     #[inline]
     pub fn as_slice<T: 'static>(&self) -> Option<&[T]> {
-        if TypeId::of::<T>() != self.typeid {
+        if self.is_type::<T>() {
             return None;
         }
 
-        Some(unsafe { slice::from_raw_parts::<'_, T>(self.memory.ptr() as *const T, self.len) })
+        Some(unsafe { self.as_slice_unchecked() })
+    }
+
+    /// Returns this vec as a reference to slice of type `T`
+    ///
+    /// # Safety
+    /// type `T` must match this vecs type
+    #[inline]
+    pub unsafe fn as_slice_unchecked<T: 'static>(&self) -> &[T] {
+        slice::from_raw_parts::<'_, T>(self.memory.ptr() as *const T, self.len)
     }
 
     /// Returns this vec as a mutable reference to slice of type `T`
@@ -252,11 +324,20 @@ impl ImposterVec {
     /// Returns `None` if `T` does not match this vecs type
     #[inline]
     pub fn as_slice_mut<T: 'static>(&mut self) -> Option<&mut [T]> {
-        if TypeId::of::<T>() != self.typeid {
+        if self.is_type::<T>() {
             return None;
         }
 
-        Some(unsafe { slice::from_raw_parts_mut::<'_, T>(self.memory.ptr() as *mut T, self.len) })
+        Some(unsafe { self.as_slice_mut_unchecked() })
+    }
+
+    /// Returns this vec as a mutable reference to slice of type `T`
+    ///
+    /// # Safety
+    /// type `T` must match this vecs type
+    #[inline]
+    pub unsafe fn as_slice_mut_unchecked<T: 'static>(&mut self) -> &mut [T] {
+        slice::from_raw_parts_mut::<'_, T>(self.memory.ptr() as *mut T, self.len)
     }
 
     /// Returns this vec as a pointer to a slice of type `T`
@@ -264,14 +345,21 @@ impl ImposterVec {
     /// Returns `None` if `T` does not match this vecs type
     #[inline]
     pub fn as_slice_ptr<T: 'static>(&self) -> Option<ptr::NonNull<[T]>> {
-        if TypeId::of::<T>() != self.typeid {
+        if self.is_type::<T>() {
             return None;
         }
 
-        unsafe {
-            let slice = slice::from_raw_parts_mut::<'_, T>(self.memory.ptr() as *mut T, self.len);
-            Some(ptr::NonNull::new_unchecked(slice as *mut [T]))
-        }
+        Some(unsafe { self.as_slice_ptr_unchecked() })
+    }
+
+    /// Returns this vec as a pointer to a slice of type `T`
+    ///
+    /// # Safety
+    /// type `T` must match this vecs type
+    #[inline]
+    pub unsafe fn as_slice_ptr_unchecked<T: 'static>(&self) -> ptr::NonNull<[T]> {
+        let slice = slice::from_raw_parts_mut::<'_, T>(self.memory.ptr() as *mut T, self.len);
+        ptr::NonNull::new_unchecked(slice as *mut [T])
     }
 
     /// Returns an iterator over all the elements of this vec

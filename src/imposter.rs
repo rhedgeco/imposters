@@ -33,12 +33,10 @@ impl Drop for Imposter {
     }
 }
 
-impl Imposter {
-    /// Creates a new imposter containing `item`
-    #[inline]
-    pub fn new<T: 'static>(item: T) -> Self {
+impl<T: 'static> From<Box<T>> for Imposter {
+    fn from(item: Box<T>) -> Self {
         let data = unsafe {
-            let data_ptr = Box::into_raw(Box::new(item));
+            let data_ptr = Box::into_raw(item);
             ptr::NonNull::new_unchecked(data_ptr).cast::<u8>()
         };
 
@@ -51,6 +49,14 @@ impl Imposter {
                 true => Some(Self::drop_impl::<T>),
             },
         }
+    }
+}
+
+impl Imposter {
+    /// Creates a new imposter containing `item`
+    #[inline]
+    pub fn new<T: 'static>(item: T) -> Self {
+        Box::new(item).into()
     }
 
     pub(crate) unsafe fn from_raw(
@@ -69,18 +75,41 @@ impl Imposter {
 
     /// Downcasts the data in this imposter to an owned type `T`.
     ///
-    /// If `T` does not match the internal type, `None` is returned.
+    /// If `T` does not match the internal type, the imposter is returned in `Err`
     #[inline]
-    pub fn downcast<T: 'static>(self) -> Option<T> {
-        if self.typeid != TypeId::of::<T>() {
-            return None;
+    pub fn downcast<T: 'static>(self) -> Result<T, Self> {
+        self.downcast_box().map(|b| *b)
+    }
+
+    /// Downcasts the data in this imposter to an owned type `T`.
+    ///
+    /// # Safety
+    /// - `T` must match the internal type
+    pub unsafe fn downcast_unchecked<T: 'static>(self) -> T {
+        *self.downcast_box_unchecked()
+    }
+
+    /// Downcasts the data in this imposter to an owned type `Box<T>`.
+    ///
+    /// If `T` does not match the internal type, the imposter is returned in `Err`
+    pub fn downcast_box<T: 'static>(self) -> Result<Box<T>, Self> {
+        if self.has_type_id::<T>() {
+            return Err(self);
         }
 
         // SAFETY:
         // raw pointer type is checked before conversion
-        let item = unsafe { *Box::from_raw(self.data.as_ptr() as *mut T) };
+        Ok(unsafe { self.downcast_box_unchecked() })
+    }
+
+    /// Downcasts the data in this imposter to an owned type `Box<T>`.
+    ///
+    /// # Safety
+    /// - `T` must match the internal type
+    pub unsafe fn downcast_box_unchecked<T: 'static>(self) -> Box<T> {
+        let item = unsafe { Box::from_raw(self.data.as_ptr() as *mut T) };
         mem::forget(self);
-        Some(item)
+        item
     }
 
     /// Downcasts the data in this imposter to type `&T`.
@@ -88,13 +117,21 @@ impl Imposter {
     /// If `T` does not match the internal type, `None` is returned.
     #[inline]
     pub fn downcast_ref<T: 'static>(&self) -> Option<&T> {
-        if self.typeid != TypeId::of::<T>() {
+        if self.has_type_id::<T>() {
             return None;
         }
 
         // SAFETY:
         // raw pointer type is checked before conversion
-        Some(unsafe { &*(self.data.as_ptr() as *mut T) })
+        Some(unsafe { self.downcast_ref_unchecked() })
+    }
+
+    /// Downcasts the data in this imposter to type `&T`.
+    ///
+    /// # Safety
+    /// - `T` must match the internal type
+    pub unsafe fn downcast_ref_unchecked<T: 'static>(&self) -> &T {
+        &*(self.data.as_ptr() as *mut T)
     }
 
     /// Downcasts the data in this imposter to type `&mut T`.
@@ -102,13 +139,21 @@ impl Imposter {
     /// If `T` does not match the internal type, `None` is returned.
     #[inline]
     pub fn downcast_mut<T: 'static>(&mut self) -> Option<&mut T> {
-        if self.typeid != TypeId::of::<T>() {
+        if self.has_type_id::<T>() {
             return None;
         }
 
         // SAFETY:
         // raw pointer type is checked before conversion
-        Some(unsafe { &mut *(self.data.as_ptr() as *mut T) })
+        Some(unsafe { self.downcast_mut_unchecked() })
+    }
+
+    /// Downcasts the data in this imposter to type `&mut T`.
+    ///
+    /// # Safety
+    /// - `T` must match the internal type
+    pub unsafe fn downcast_mut_unchecked<T: 'static>(&mut self) -> &mut T {
+        &mut *(self.data.as_ptr() as *mut T)
     }
 
     /// Disposes of this imposter and deallocates the data it points to ***without*** calling its destructor
@@ -127,6 +172,11 @@ impl Imposter {
     #[inline]
     pub fn type_id(&self) -> TypeId {
         self.typeid
+    }
+
+    /// Returns true if `T` matches the internal type
+    pub fn has_type_id<T: 'static>(&self) -> bool {
+        self.typeid != TypeId::of::<T>()
     }
 
     /// Returns a reference to the internal layout
